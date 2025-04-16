@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # HDFS 마스터 노드 - 파일 시스템의 메타데이터를 관리
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    environment:
+      - CLUSTER_NAME=test  # 클러스터 식별자
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - HDFS_CONF_dfs_replication=3  # 복제 계수 설정
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name  # 네임노드 메타데이터 저장 볼륨
+    ports:
+      - "9870:9870"  # HDFS 웹 인터페이스 (http://localhost:9870)
+      - "9000:9000"  # HDFS 파일 시스템 접근 포트
+    networks:
+      - hadoop-network
+    restart: unless-stopped
+
+  # HDFS 데이터 노드 1 - 실제 데이터를 저장
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870  # 네임노드가 준비될 때까지 대기
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    volumes:
+      - hadoop_datanode1:/hadoop/dfs/data  # 데이터 노드 데이터 저장 볼륨
+    ports:
+      - "9864:9864"  # 데이터노드 웹 인터페이스
+    networks:
+      - hadoop-network
+    depends_on:
+      - namenode  # 네임노드에 의존
+    restart: unless-stopped
+
+  # HDFS 데이터 노드 2
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    volumes:
+      - hadoop_datanode2:/hadoop/dfs/data
+    networks:
+      - hadoop-network
+    depends_on:
+      - namenode
+    restart: unless-stopped
+
+  # HDFS 데이터 노드 3
+  datanode3:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode3
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    volumes:
+      - hadoop_datanode3:/hadoop/dfs/data
+    networks:
+      - hadoop-network
+    depends_on:
+      - namenode
+    restart: unless-stopped
+
+  # YARN 리소스 매니저 - 클러스터 리소스 관리
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870  # 네임노드가 준비될 때까지 대기
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+      - YARN_CONF_yarn_resourcemanager_address=resourcemanager:8032
+      - YARN_CONF_yarn_resourcemanager_scheduler_address=resourcemanager:8030
+      - YARN_CONF_yarn_resourcemanager_resource_tracker_address=resourcemanager:8031
+      - YARN_CONF_yarn_resourcemanager_webapp_address=resourcemanager:8088
+      - YARN_CONF_yarn_scheduler_maximum_allocation_mb=8192  # 최대 메모리 할당
+      - YARN_CONF_yarn_scheduler_maximum_allocation_vcores=8  # 최대 CPU 코어 할당
+    ports:
+      - "8088:8088"  # YARN 웹 인터페이스 (http://localhost:8088)
+      - "8030:8030"  # 스케줄러
+      - "8031:8031"  # 리소스 트래커
+      - "8032:8032"  # 리소스 매니저
+    networks:
+      - hadoop-network
+    depends_on:
+      - namenode
+    restart: unless-stopped
+
+  # YARN 노드 매니저 - 각 노드의 리소스 관리
+  nodemanager:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870,resourcemanager:8088  # 네임노드와 리소스매니저가 준비될 때까지 대기
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+      - YARN_CONF_yarn_nodemanager_resource_memory_mb=8192  # 노드 매니저 메모리
+      - YARN_CONF_yarn_nodemanager_resource_cpu_vcores=8  # 노드 매니저 CPU 코어
+      - YARN_CONF_yarn_nodemanager_aux_services=mapreduce_shuffle  # 셔플 서비스
+    networks:
+      - hadoop-network
+    depends_on:
+      - namenode
+      - resourcemanager
+    restart: unless-stopped
+
+# 영구 데이터 저장을 위한 볼륨 정의
+volumes:
+  hadoop_namenode:  # 네임노드 메타데이터 저장 볼륨
+  hadoop_datanode1:  # 데이터노드1 데이터 저장 볼륨
+  hadoop_datanode2:  # 데이터노드2 데이터 저장 볼륨
+  hadoop_datanode3:  # 데이터노드3 데이터 저장 볼륨
+
+# 컨테이너 간 통신을 위한 네트워크 정의
+networks:
+  hadoop-network:
+    driver: bridge 
